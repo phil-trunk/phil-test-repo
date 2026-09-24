@@ -1,0 +1,88 @@
+name: auth-spike-2
+
+on:
+  pull_request:
+
+env:
+  PROBE: |
+    set -uo pipefail
+    api() {
+      curl -sS -o body.json -w '%{http_code}' \
+        -H "Authorization: Bearer $GH_TOKEN" \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        "https://api.github.com$1"
+    }
+    echo "job=$JOB_LABEL event=$EVENT_NAME repo=$GITHUB_REPOSITORY pr=$PR_NUMBER"
+    s=$(api /installation/repositories)
+    echo "installation/repositories status=$s"
+    jq -c '{total_count, repos: [.repositories[]? | {full_name, id}], message}' body.json
+    s=$(api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")
+    echo "pulls/$PR_NUMBER status=$s"
+    jq -c '{state, head_sha: .head.sha, head_repo_id: .head.repo.id, head_repo: .head.repo.full_name, head_fork: .head.repo.fork, base_repo_id: .base.repo.id, base_ref: .base.ref, message}' body.json
+    s=$(curl -sS -o anon.json -w '%{http_code}' "https://api.github.com/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")
+    echo "pulls/$PR_NUMBER anonymous status=$s"
+    if [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+      echo "OIDC: available"
+    else
+      echo "OIDC: not available"
+    fi
+
+jobs:
+  default-perms:
+    runs-on: ubuntu-latest
+    env:
+      JOB_LABEL: default-perms
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      EVENT_NAME: ${{ github.event_name }}
+    steps:
+      - run: bash -c "$PROBE"
+
+  contents-read:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      JOB_LABEL: contents-read
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      EVENT_NAME: ${{ github.event_name }}
+    steps:
+      - run: bash -c "$PROBE"
+
+  no-perms:
+    runs-on: ubuntu-latest
+    permissions: {}
+    env:
+      JOB_LABEL: no-perms
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      EVENT_NAME: ${{ github.event_name }}
+    steps:
+      - run: bash -c "$PROBE"
+
+  pull-requests-read:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    env:
+      JOB_LABEL: pull-requests-read
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      EVENT_NAME: ${{ github.event_name }}
+    steps:
+      - run: bash -c "$PROBE"
+
+  id-token-write:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      JOB_LABEL: id-token-write
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      EVENT_NAME: ${{ github.event_name }}
+    steps:
+      - run: bash -c "$PROBE"
